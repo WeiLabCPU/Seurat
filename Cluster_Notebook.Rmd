@@ -1,0 +1,95 @@
+---
+title: "Cluster_DE_Notebook"
+output: html_notebook
+---
+
+# CLuser前：计算样本间距离
+
+PCA结果进行选择好后（elbow图），需要进行样本间（细胞）距离计算`FindNeighbors()`，距离计算是用来识别具有相似表达模式的细胞群体，这些群体通常代表相同或类似的细胞类型、细胞状态或细胞功能。
+
+```{r}
+# pbmc <- FindNeighbors(pbmc, dims = 1:10)
+# pbmc <- FindClusters(pbmc, resolution = 0.5)
+```
+
+## 欧几里得距离
+
+最常用的距离度量是欧几里得距离，它是直接从欧几里得几何中衍生出来的概念。对于两个点 $x$ 和 $y$，其在$n$维空间中的欧几里得距离定义为： $$
+d(x, y) = \sqrt{(x_1 - y_1)^2 + (x_2 - y_2)^2 + \cdots + (x_n - y_n)^2}
+$$ 这个公式本质上是在计算两点间直线的长度，用于衡量两个数据点在所有维度上的绝对差异。
+
+```{r 计算欧几里得距离}
+# 定义两个向量
+x <- c(1, 2, 3)
+y <- c(4, 5, 6)
+
+euclidean_distance <- sqrt(sum((x - y)^2))
+print(paste("欧几里得距离: ", euclidean_distance))
+
+```
+
+## 曼哈顿距离
+
+另一种常见的距离度量是曼哈顿距离，适用于需要衡量每个维度差异绝对值总和的情形，定义为： $$
+d(x, y) = |x_1 - y_1| + |x_2 - y_2| + \cdots + |x_n - y_n|
+$$ 曼哈顿距离在某些情况下比欧几里得距离更实用，尤其是在各维度的重要性相同且数据的尺度一致时。
+
+```{r 计算曼哈顿距离}
+manhattan_distance <- sum(abs(x - y))
+print(paste("曼哈顿距离: ", manhattan_distance))
+
+```
+
+## 余弦相似度
+
+在处理方向性更重要而不是大小时，余弦相似度（并非直接的距离度量，而是相似度度量）成为计算两个数据点间角度差异的有用工具。它计算的是两个向量的夹角的余弦值： $$
+\text{cosine similarity} = \frac{x \cdot y}{\|x\| \|y\|}
+$$ 余弦值接近1意味着两个向量方向相同，接近0表示正交，接近-1表示方向相反。
+
+```{r 计算余弦相似度}
+cosine_similarity <- sum(x * y) / (sqrt(sum(x^2)) * sqrt(sum(y^2)))
+print(paste("余弦相似度: ", cosine_similarity))
+
+```
+
+## SNN（Shared Nearest Neighbor）
+
+**SNN** 的基本思想是，两个样本的相似性不仅取决于它们之间的直接距离，还取决于它们共有的邻居的数量和质量。如果两个样本有许多共同的最近邻居，即使它们之间的直接距离较远，它们也可能非常相似。
+
+SNN 距离计算的步骤
+
+1.  **确定最近邻**：对于每个数据点（如每个细胞），根据某种距离度量（通常是欧几里得距离）计算它与其他所有点的距离。根据这些距离，为每个点找到一定数量的最近邻。
+
+2.  **构建SNN图**：为每一对样本计算共享的最近邻的数量。构建一个图，其中节点代表样本，边连接有共同最近邻的样本，边的权重可以是它们共享最近邻的数量。
+
+3.  **使用SNN进行聚类**：基于SNN图，使用聚类算法（如Louvain算法或其他社区检测算法）来识别数据中的聚类或社区。这些算法通常利用图的模块性来优化聚类结果。
+
+## UMAP（Uniform Manifold Approximation and Projection）
+
+非线性降维技术
+
+# Clustering：Louvain算法
+
+Seurat里使用`FindCluster()`函数来进行聚类操作。
+
+这里用Zachary空手道俱乐部"网络图来展示Louvain算法
+
+```{r 安装igraph包}
+# install.packages("igraph")
+library(igraph)
+```
+
+```{r}
+G <- make_graph("Zachary")
+plot(G)
+```
+
+```{r}
+community <- cluster_louvain(G)
+print(community)
+plot(community, G, vertex.size=10, vertex.label=NA, 
+     vertex.frame.color="#ffffff", vertex.color=membership(community))
+```
+# Differential Expression
+
+目的：用`FindMarkers()`函数识别各个细胞聚类中的代表性基因，找到每个聚类的**正向**和**负向**标记物。这些基因在特定的细胞聚类中表达显著不同于其他聚类，因此可以作为标记物（marker genes）来定义和解释这些聚类。

@@ -1,0 +1,228 @@
+---
+title: "PCA Practical"
+output: html_notebook
+Date: 2024年05月11日23:49:56
+---
+
+> Tittle: PCA Process\
+> Author: zyzhou\
+> Date: 2024年05月11日23:49:56
+
+# Normalization
+
+标准化数据是通过从每个成绩中减去相应科目的均值，然后除以该科目的标准差来计算的。计算公式为： $$
+Z = \frac{X - \mu}{\sigma}
+$$ 其中 $X$ 是原始成绩，$μ$ 是均值，$σ$ 是标准差
+
+```{r init scores}
+scores <- data.frame(
+  Student = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10"),
+  Mathematics = c(62, 88, 76, 70, 82, 63, 96, 62, 91, 79),
+  English = c(72, 78, 86, 80, 83, 77, 91, 78, 85, 80)
+)
+stats <- data.frame(
+  mean_mathematics = mean(scores$Mathematics),
+  mean_english = mean(scores$English),
+  sd_mathematics = sd(scores$Mathematics),
+  sd_english = sd(scores$English)
+)
+
+scores
+```
+
+```{r NormalizationMethod1}
+## 方法1: 手动计算
+scores_scaled <- data.frame(
+  Student = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10"),
+  Mathematics_scaled = (scores$Mathematics - mean(scores$Mathematics)) / sd(scores$Mathematics),
+  English_scaled = (scores$English - mean(scores$English)) / sd(scores$English)
+)
+
+scores_scaled
+```
+
+```{r NormalizationMethod2}
+## 方法2: 使用内置函数 scale()，这个函数默认就是进行均值为0且标准差为1的标准化
+scores_scaled0 <- scale(scores[, c("Mathematics", "English")])
+
+scores_scaled <- data.frame(
+  Student = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10"),
+  Mathematics_scaled = scores_scaled0[, "Mathematics"],
+  English_scaled = scores_scaled0[, "English"]
+)
+
+rm(scores_scaled0)
+```
+
+验证方差和均值,应该为1和0。
+
+```{r}
+stats_scaled <- data.frame(
+  mean_mathematics = mean(scores_scaled$Mathematics_scaled),
+  mean_english = mean(scores_scaled$English_scaled),
+  sd_mathematics = sd(scores_scaled$Mathematics_scaled),
+  sd_english = sd(scores_scaled$English_scaled)
+)
+
+stats_scaled
+```
+
+# 计算协方差矩阵
+
+协方差的计算公式为：
+
+$$
+\text{Cov}(X, Y) = \frac{1}{n-1} \sum_{i=1}^{n} (X_i - \bar{X})(Y_i - \bar{Y})
+$$
+
+这里：
+
+-   $X_i$ 和 $Y_i$ 是两个变量的观测值，
+
+-   $\bar{X}$ 和 $\bar{Y}$ 是这两个变量的样本均值。
+
+步骤：
+
+1.  计算均值偏差：对每个观测值，计算它与均值的偏差，即 $(X_i - \bar{X})$ 和 $(Y_i - \bar{Y})$。
+
+2.  计算偏差乘积：对每一对偏差乘积求和，即 $\sum (X_i - \bar{X})(Y_i - \bar{Y})$。
+
+3.  除以 $n-1$：最后，将偏差乘积的和除以$n-1$（因为这是样本协方差的无偏估计），得到协方差。
+
+结果：
+
+> 正值：如果协方差为正，意味着当一个变量的值高于其均值时，另一个变量的值也倾向于高于其均值。
+
+> 负值：如果协方差为负，意味着一个变量的值高于其均值时，另一个变量的值倾向于低于其均值。
+
+> 零：如果协方差接近零，意味着两个变量之间没有明显的线性关系 计算协方差矩阵的特征值和特征向量
+
+假设没有错误发生，该代码将输出一个 $2×2$ 的协方差矩阵，其中：
+
+-   矩阵的第一个元素（左上角）将是数学成绩的方差。
+
+-   第二个元素（右上角和左下角，因为协方差矩阵是对称的）将是数学和英语成绩的协方差。
+
+-   第三个元素（右下角）将是英语成绩的方差。
+
+```{r 手动计算}
+# 计算数学成绩自身的协方差, 已经是偏差，因为数据是标准化的
+cov_math <- sum(scores_scaled$Mathematics_scaled * scores_scaled$Mathematics_scaled) / (length(scores_scaled$Mathematics_scaled) - 1)
+# 计算英语成绩自身的协方差
+cov_english <- sum(scores_scaled$English_scaled * scores_scaled$English_scaled) / (length(scores_scaled$English_scaled) - 1)
+# 计算数学和英语成绩之间的协方差
+cov_math_english <- sum(scores_scaled$Mathematics_scaled * scores_scaled$English_scaled) / (length(scores_scaled$Mathematics_scaled) - 1)
+# 构建协方差矩阵
+cov_matrix <- matrix(c(cov_math, cov_math_english,
+                       cov_math_english, cov_english), nrow = 2, byrow = TRUE)
+colnames(cov_matrix) <- rownames(cov_matrix) <- c("Mathematics", "English")
+rm(cov_math,cov_english,cov_math_english)
+
+cov_matrix
+
+```
+
+```{r 内置函数实现}
+scores_scaled1 <- data.frame(scores_scaled$Mathematics_scaled,scores_scaled$English_scaled)
+cov_matrix <- cov(scores_scaled1)
+rm(scores_scaled1)
+
+cov_matrix
+```
+
+# 计算特征值和特征向量
+
+特征值和特征向量提供了关于数据结构的重要信息，特别是数据变异最大的方向（即主成分）。主成分在降低数据的维度，同时保留最关键的信息。
+
+-   **特征值（Eigenvalue）**：表示协方差矩阵在对应特征向量方向上的方差。一个大的特征值意味着该方向上数据的变异大，因此更重要。
+
+    -   对于给定的方阵 $A$，如果存在一个标量 λ 和一个非零向量 $v$，使得 $Av=λv$ ，则 $λ$ 被称为矩阵 $A$ 的一个特征值。
+
+-   **特征向量（Eigenvector）**：表示数据在特征值指示的方差最大的方向。每个特征向量都是正交（互相垂直）的，表示数据在多维空间中的不同方向。
+
+    -   与特征值 $λ$ 相关的向量 $v$（不是零向量），满足等式 $Av=λv$。特征向量表示矩阵 $A$ 变换时不改变方向的向量。
+
+```{r}
+eigen_results <- eigen(cov_matrix)
+# 特征值和特征向量
+eigen_values <- eigen_results$values
+eigen_vectors <- eigen_results$vectors
+
+eigen_values
+eigen_vectors
+```
+
+[,1] 和 [,2] 表示第一和第二主成分的特征向量。每个向量都由两部分组成，第一行代表数学成绩在该主成分上的权重，第二行代表英语成绩在该主成分上的权重。
+
+# 选择主成分
+
+根据特征值的大小选择顶部的几个主成分。通常，你会选择那些有最大特征值的特征向量，因为它们捕获了数据中最多的信息（方差）。
+
+-   **贡献率**：每个特征值与所有特征值总和的比例，表示每个主成分的相对重要性。
+
+-   **累积贡献率**：通常选择累积贡献率达到一定百分比（如80%、90%）的主成分，确保保留了大部分信息。
+
+```{r}
+# 选择主成分，例如选择前两个主成分
+pc1 <- eigen_vectors[,1]
+pc2 <- eigen_vectors[,2]
+```
+
+# 投影到新的坐标系
+
+目的：使用选定的主成分（特征向量）将原始数据投影到新的坐标系中。
+
+计算公式：$Y=XV$
+
+设原始数据矩阵为 $X$（每行一个数据点，已经标准化处理过），特征向量矩阵为$V$（包含了选择的主成分）。投影操作可以表示为$Xproj=XV$，其中$Xproj$是投影后的数据。
+
+作用：数据在新坐标系中展示，更能突出主要的变化趋势。这一步实际上是使用特征向量作为基底，转换原始数据到一个低维空间。
+
+```{r}
+scores_scaled1 <- data.frame(scores_scaled$Mathematics_scaled,scores_scaled$English_scaled)
+X_proj <- as.matrix(scores_scaled1) %*% cbind(pc1, pc2)
+
+rm(scores_scaled1)
+X_proj
+```
+
+# 总结
+
+> 主成分分析（PCA）的核心目标是减少数据的维度，同时尽可能地保留数据中的变异信息。
+
+1.  数据标准化
+
+目的：确保每个特征对最终结果的贡献相等。因为PCA对尺度敏感，所以未标准化的数据可能导致尺度较大的变量主导主成分。
+
+操作：从每个变量中减去其均值（中心化），并除以其标准差（缩放），使得每个特征的均值为0，标准差为1。
+
+2.  计算协方差矩阵
+
+目的：找出数据特征之间的相关性。
+
+操作：PCA开始于计算数据的协方差矩阵,这个矩阵提供了不同特征之间方差（对角线上的元素）和协方差（非对角线元素）的信息。这等同于计算变量之间的相关矩阵。
+
+3.  计算协方差矩阵的特征值和特征向量
+
+目的：特征值和对应的特征向量指示了数据中的主要变异方向。
+
+操作：使用数值方法，如奇异值分解SVD或特征分解（本例），来求解协方差矩阵的特征值和特征向量。特征值实际上是该方向上的方差量，而特征向量则定义了这些方向。特征值越大，对应的特征向量在数据中的变异解释就越多。换句话说，一个大的特征值表示其对应的特征向量方向上数据的分散度高，这个方向上的信息量大。
+
+4.  选择主成分
+
+目的：确定应保留的主要成分数目，这些主成分捕捉了数据中的最大方差。
+
+操作： 排列特征值，选择最大的几个。通常根据它们的累积贡献率来选择（例如，选择累积贡献达到85%以上的主成分）。
+
+5.  形成得分矩阵
+
+目的：将原始数据转换到新的主成分坐标系统中，形成得分或因子载荷。
+
+操作：使用原始数据矩阵乘以选定的主成分的特征向量矩阵（主成分的子集）。
+
+在单细胞RNA测序（scRNA-seq）分析中：
+
+-   每行（一个细胞）包含了该细胞在每个主成分（新的特征空间中的维度）上的得分。
+-   每列代表一个主成分，反映了原始基因表达数据中一个特定的变异模式。
+
+6.  利用PCA结果进行后续分析：选择需要的主成分，聚类等
